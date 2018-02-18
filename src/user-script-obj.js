@@ -413,6 +413,9 @@ window.EditableUserScript = class EditableUserScript
   //   Having both `@match` and `@include`
   //   Using regex in `@include` or `@exclude`
   checkForRegex() {
+    // Reset expressions
+    this._matchExpression = null;
+    this._excludeExpression = null;
     this._requireRegex = false;
 
     // TODO: User includes/excludes
