@@ -9,7 +9,7 @@ reference any other objects from this file.
 // Increment this number when updating `calculateEvalContent()`.  If it
 // is higher than it was when eval content was last calculated, it will
 // be re-calculated.
-const EVAL_CONTENT_VERSION = 11;
+const EVAL_CONTENT_VERSION = 12;
 
 
 // Private implementation.
@@ -36,6 +36,16 @@ const SCRIPT_ENV_EXTRA = `
 function hasRegexString(items) {
   for (let pattern of items) {
     if ('/' == pattern.substr(0, 1) &&  '/' == pattern.substr(-1, 1)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
+function hasTld(items) {
+  for (let pattern of items) {
+    if (/^([^:]+:\/\/[^\/]+)\.tld(\/.*)?$/.test(pattern)) {
       return true;
     }
   }
@@ -407,14 +417,14 @@ window.EditableUserScript = class EditableUserScript
 
     // TODO: User includes/excludes
     // TODO: Global
-    if (hasRegexString(this.excludes)) {
+    if (hasRegexString(this.excludes) || hasTld(this.excludes)) {
       this._requireRegex = true;
     }
 
     // Having both `@match` and `@include` or using regex in `@include` only
     // matters if the special <all_urls> token is not present.
     if (this.matches.indexOf('<all_urls>') === -1) {
-      if (hasRegexString(this.includes)) {
+      if (hasRegexString(this.includes) || hasTld(this.includes)) {
         this._requireRegex = true;
       } else if (this.matches.length > 0 && this.includes.length > 0) {
         this._requireRegex = true;
