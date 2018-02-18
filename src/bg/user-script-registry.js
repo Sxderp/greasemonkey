@@ -114,9 +114,14 @@ async function loadUserScripts() {
       userScripts = {};
       await Promise.all(event.target.result.map(async details => {
         let userScript = new EditableUserScript(details);
-        userScripts[details.uuid] = userScript;
+
         if (userScript.evalContentVersion != EVAL_CONTENT_VERSION) {
           await saveUserScript(userScript);
+        } else {
+          // TODO: Better handling of error..?
+          setUserScript(userScript).catch(err => {
+            console.log('failed to load script:', userScript.id, err);
+          });
         }
       }));
       resolve();
@@ -128,6 +133,34 @@ async function loadUserScripts() {
       db.close();
     };
   });
+}
+
+
+// Reload all current in memory user script registrations
+function reloadUserScripts() {
+  let loadingScripts =
+      Object.keys(userScripts).map(uuid => setUserScript(userScripts[uuid]));
+  return Promise.all(loadingScripts);
+}
+
+
+async function setUserScript(userScript) {
+  let uuid = userScript.uuid;
+  // Unregister any existing scripts
+  if (userScripts[uuid]) {
+    await userScripts[uuid].unregister();
+  }
+  userScripts[uuid] = userScript;
+  if (userScript.enabled) {
+    await userScript.register();
+  }
+}
+
+
+function unregisterAllScripts() {
+  let unloadingScripts =
+      Object.keys(userScripts).map(uuid => userScripts[uuid].unregister());
+  return Promise.all(unloadingScripts);
 }
 
 
@@ -150,10 +183,8 @@ window.onEditorSaved = onEditorSaved;
 
 function onListUserScripts(message, sender, sendResponse) {
   let result = [];
-  var userScriptIterator = UserScriptRegistry.scriptsToRunAt(
-      null, message.includeDisabled);
-  for (let userScript of userScriptIterator) {
-    result.push(userScript.details);
+  for (let uuid in userScripts) {
+    result.push(userScripts[uuid].details);
   }
   sendResponse(result);
 };
@@ -216,22 +247,27 @@ function onUserScriptToggleEnabled(message, sender, sendResponse) {
 window.onUserScriptToggleEnabled = onUserScriptToggleEnabled;
 
 
+// TODO: This should be separated from messages..
 async function onUserScriptUninstall(message, sender, sendResponse) {
   let db = await openDb();
-  let txn = db.transaction([scriptStoreName], 'readwrite');
-  let store = txn.objectStore(scriptStoreName);
-  let req = store.delete(message.uuid);
-  req.onsuccess = event => {
-    // TODO: Drop value store DB.
-    delete userScripts[message.uuid];
-    sendResponse(null);
+  return new Promise((resolve, reject) => {
+    let txn = db.transaction([scriptStoreName], 'readwrite');
+    let store = txn.objectStore(scriptStoreName);
+    let req = store.delete(message.uuid);
     db.close();
-  };
-  req.onerror = event => {
-    console.error('onUserScriptUninstall() failure', event);
-    db.close();
-  };
-};
+
+    req.onsuccess = event => {
+      // TODO: Drop value store DB.
+      userScripts[message.uuid].unregister().then(sendResponse);
+      delete userScripts[message.uuid];
+      resolve();
+    };
+    req.onerror = event => {
+      console.error('onUserScriptUninstall() failure', event);
+      reject(event);
+    };
+  });
+}
 window.onUserScriptUninstall = onUserScriptUninstall;
 
 
@@ -270,11 +306,8 @@ async function saveUserScript(userScript) {
   return new Promise((resolve, reject) => {
     let txn = db.transaction([scriptStoreName], 'readwrite');
     txn.oncomplete = event => {
-      // In case this was for an install, now that the user script is saved
-      // to the object store, also put it in the in-memory copy.
-      userScripts[userScript.uuid] = userScript;
-      resolve();
       db.close();
+      setUserScript(userScript).then(resolve).catch(reject);
     };
     txn.onerror = event => {
       onSaveError(event.target.error);
@@ -305,33 +338,15 @@ function scriptByUuid(scriptUuid) {
 }
 
 
-// Generate user scripts to run at `urlStr`; all if no URL provided.
-function* scriptsToRunAt(urlStr=null, includeDisabled=false) {
-  let url = urlStr && new URL(urlStr);
-
-  for (let uuid in userScripts) {
-    let userScript = userScripts[uuid];
-    try {
-      if (!includeDisabled && !userScript.enabled) continue;
-      if (url && !userScript.runsAt(url)) continue;
-      yield userScript;
-    } catch (e) {
-      console.error(
-          'Failed checking whether', userScript.toString(),
-          'runs at', urlStr, ':', e);
-    }
-  }
-}
-
-
 // Export public API.
 window.UserScriptRegistry = {
   '_loadUserScripts': loadUserScripts,
   '_saveUserScript': saveUserScript,
   'installFromDownloader': installFromDownloader,
   'installFromSource': installFromSource,
+  'reloadUserScripts': reloadUserScripts,
   'scriptByUuid': scriptByUuid,
-  'scriptsToRunAt': scriptsToRunAt,
+  'unregisterAllScripts': unregisterAllScripts,
 };
 
 })();

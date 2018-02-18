@@ -67,8 +67,16 @@ function setIcon() {
 }
 
 
-function toggleGlobalEnabled() {
+async function toggleGlobalEnabled() {
   setGlobalEnabled(!isEnabled);
+  if (isEnabled) {
+    // Reload user scripts
+    await UserScriptRegistry.reloadUserScripts();
+  } else {
+    // Unregister user scripts
+    await UserScriptRegistry.unregisterAllScripts();
+  }
+  return isEnabled;
 }
 window.toggleGlobalEnabled = toggleGlobalEnabled;
 
@@ -76,8 +84,7 @@ window.toggleGlobalEnabled = toggleGlobalEnabled;
 function onEnabledToggle(message, sender, sendResponse) {
   try {
   console.log('got enabled toggle', message, sender);
-  toggleGlobalEnabled();
-  sendResponse(isEnabled);
+  return toggleGlobalEnabled();
   } catch (e) { console.error(e); }
 }
 window.onEnabledToggle = onEnabledToggle;

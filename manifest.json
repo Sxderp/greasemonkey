@@ -30,7 +30,6 @@
       "src/i18n.js",
 
       "src/bg/api-provider-source.js",
-      "src/bg/execute.js",
       "src/bg/is-enabled.js",
       "src/bg/on-message.js",
       "src/bg/on-user-script-notification.js",
@@ -47,7 +46,6 @@
       "third-party/MatchPattern.js",
       "third-party/convert2RegExp.js",
 
-      "src/bg/execute.run.js",
       "src/bg/user-script-detect.run.js",
       "src/bg/user-script-registry.run.js",
       "src/bg/welcome.run.js"
@@ -60,9 +58,8 @@
     "notifications",
     "storage",
     "tabs",
-    "unlimitedStorage",
-    "webNavigation",
     "webRequest",
-    "webRequestBlocking"
+    "webRequestBlocking",
+    "unlimitedStorage"
   ]
 }

@@ -188,7 +188,7 @@ function onLoad(event) {
       {'name': 'EnabledQuery'},
       enabled => gTplData.enabled = enabled);
   chrome.runtime.sendMessage(
-      {'name': 'ListUserScripts', 'includeDisabled': true},
+      {'name': 'ListUserScripts'},
       function(userScripts) {
         chrome.tabs.query({'active': true, 'currentWindow': true}, tabs => {
           let url = tabs.length && new URL(tabs[0].url) || null;

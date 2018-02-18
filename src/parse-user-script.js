@@ -136,9 +136,9 @@ window.parseUserScript = function(content, url, failIfMissing) {
   }
 
   // We couldn't set this default above in case of real data, so if there's
-  // still no includes, set the default of include everything.
+  // still no includes, add a match pattern for <all_urls>
   if (details.includes.length == 0 && details.matches.length == 0) {
-    details.includes.push('*');
+    details.matches.push('<all_urls>');
   }
 
   if (details.grants.includes('none') && details.grants.length > 1) {

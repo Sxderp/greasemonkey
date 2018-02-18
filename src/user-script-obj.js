@@ -9,7 +9,7 @@ reference any other objects from this file.
 // Increment this number when updating `calculateEvalContent()`.  If it
 // is higher than it was when eval content was last calculated, it will
 // be re-calculated.
-const EVAL_CONTENT_VERSION = 10;
+const EVAL_CONTENT_VERSION = 11;
 
 
 // Private implementation.
@@ -31,6 +31,14 @@ const SCRIPT_ENV_EXTRA = `
   };
 }
 `;
+
+
+function hasRegexString(items) {
+  for (let pattern of items) {
+    return '/' == pattern.substr(0, 1) &&  '/' == pattern.substr(-1, 1);
+  }
+  return false;
+}
 
 
 function _testClude(glob, url) {
@@ -185,7 +193,8 @@ window.RemoteUserScript = class RemoteUserScript {
 
 
 const runnableUserScriptKeys = [
-    'enabled', 'evalContent', 'evalContentVersion', 'iconBlob', 'resources',
+    'enabled', 'evalContent', 'evalContentVersion', 'excludeExpression',
+    'iconBlob', 'matchAboutBlank', 'matchExpression', 'resources',
     'userExcludes', 'userIncludes', 'userMatches', 'uuid'];
 /// A _UserScript, plus user settings, plus (eval'able) contents.  Should
 /// never be called except by `UserScriptRegistry.`
@@ -197,7 +206,10 @@ window.RunnableUserScript = class RunnableUserScript
     this._enabled = true;
     this._evalContent = null;  // TODO: Calculated final eval string.  Blob?
     this._evalContentVersion = -1;
+    this._excludeExpression = null;
     this._iconBlob = null;
+    this._matchAboutBlank = false;
+    this._matchExpression = null;
     this._resources = {};  // Name to object with keys: name, mimetype, blob.
     this._userExcludes = [];  // TODO: Not implemented.
     this._userIncludes = [];  // TODO: Not implemented.
@@ -245,6 +257,8 @@ window.EditableUserScript = class EditableUserScript
     this._parsedDetails = null;  // All details from parseUserScript().
     this._content = null;
     this._requiresContent = {};  // Map of download URL to content.
+    this._requireRegex = false;
+    this._registration = null;
 
     _loadValuesInto(this, details, editableUserScriptKeys);
   }
@@ -261,7 +275,49 @@ window.EditableUserScript = class EditableUserScript
   get content() { return this._content; }
   get requiresContent() { return _safeCopy(this._requiresContent); }
 
+  get _registrationDetails() {
+    // TODO: User excludes/includes
+    // TODO: Global excludes
+    let regDetails = {
+      'js': [{'code': this.evalContent}],
+      'runAt': 'document_' + this.runAt,
+      'allFrames': ! this.noFrames
+    };
+
+    if (this._requireRegex) {
+      regDetails['matches'] = ['<all_urls>'];
+      return regDetails;
+    } else if (this.matches.indexOf('<all_urls>') !== -1) {
+      regDetails['matches'] = ['<all_urls>'];
+    } else if (this.matches.length === 0) {
+      regDetails['matches'] = ['<all_urls>'];
+      regDetails['includeGlobs'] = this.includes;
+    } else {
+      regDetails['matches'] = this.matches;
+    }
+
+    if (this.excludes.length > 0) {
+      regDetails['excludeGlobs'] = this.excludes;
+    }
+
+    return regDetails;
+  }
+
+  async register() {
+    this._registration =
+      await browser.contentScripts.register(this._registrationDetails);
+  }
+
+  async unregister() {
+    if (this._registration) {
+      await this._registration.unregister();
+      this._registration = null;
+    }
+  }
+
   calculateEvalContent() {
+    this.checkForRegex();
+
     // Put the first line of the script content on line one of the
     // generated content -- wrapped in a function.  Then add the rest
     // of the generated parts.
@@ -274,10 +330,10 @@ window.EditableUserScript = class EditableUserScript
         ${apiProviderSource(this)}
         ${Object.values(this._requiresContent).join('\n\n')}
         ${SCRIPT_ENV_EXTRA}
+        ${this.calculateRunAt()}
         userScript();
         })();
-        } catch (e) { console.error("Script error: ", e); }
-        //# sourceURL=user-script:${escape(this.id)}`;
+        } catch (e) { console.error("Script error: ", e); }`
     this._evalContentVersion = EVAL_CONTENT_VERSION;
   }
 
@@ -310,6 +366,98 @@ window.EditableUserScript = class EditableUserScript
     return 'const GM = {};\n'
         + 'GM.info=' + JSON.stringify(gmInfo) + ';'
         + 'const GM_info = GM.info;';
+  }
+
+  // If required, inject the necessary conditionals in order to perform runAt
+  // checking within the script header.
+  calculateRunAt() {
+    if (!this._requireRegex) {
+      return "";
+    }
+
+    // Do not run in about:blank unless _specifically_ requested. See #1298
+    return `
+      if (/^about:blank/.test(location.href)) {
+        if (!${this._matchAboutBlank}) {
+          return;
+        }
+      } else {
+        // Perform other matching
+        const matchRegExp = ${this._matchExpression} ?
+          new RegExp(${this._matchExpression}, "i") : false;
+        if (matchRegExp && !matchRegExp.test(location.href)) {
+          return;
+        }
+        const excludeRegExp = ${this._excludeExpression} ?
+            new RegExp(${this._excludeExpression}, "i") : false;
+        if (excludeRegExp && excludeRegExp.test(location.href)) {
+          return;
+        }
+      }`
+  }
+
+  // Determine if run checking needs to be done in the script header.
+  // Conditions which require a run check in the header include:
+  //   Having both `@match` and `@include`
+  //   Using regex in `@include` or `@exclude`
+  checkForRegex() {
+    this._requireRegex = false;
+
+    // TODO: User includes/excludes
+    // TODO: Global
+    if (hasRegexString(this.excludes)) {
+      this._requireRegex = true;
+    }
+
+    // Having both `@match` and `@include` or using regex in `@include` only
+    // matters if the special <all_urls> token is not present.
+    if (this.matches.indexOf('<all_urls>') === -1) {
+      if (hasRegexString(this.includes)) {
+        this._requireRegex = true;
+      } else if (this.matches.length > 0 && this.includes.length > 0) {
+        this._requireRegex = true;
+      }
+    }
+
+    if (this._requireRegex) {
+      this.generateMatches();
+      this.generateExcludes();
+    }
+  }
+
+  generateMatches() {
+    // Create a RegExp string from @match and @include
+    // TODO: User includes/excludes and global
+    let regex = "";
+
+    for (let glob of this._includes) {
+      if (aboutBlankRegexp.test(glob)) {
+        this._matchAboutBlank = true;
+        continue;
+      }
+      regex += "|(" + GM_convert2RegExp(glob).source + ")";
+    }
+    for (let pattern of this._matches) {
+      if ('string' == typeof pattern) {
+        pattern = new MatchPattern(pattern);
+      } else if (!(pattern instanceof MatchPattern)) {
+        continue;
+      }
+      regex += "|(" + pattern.expression.source + ")";
+    }
+
+    this._matchExpression = regex ? `"${regex.substring(1)}"` : null;
+  }
+
+  generateExcludes() {
+    // Create a RegExp string from @exclude
+    let regex = "";
+
+    for (let glob of this._excludes) {
+      regex += "|(" + GM_convert2RegExp(glob) + ")";
+    }
+
+    this._excludeExpression = regex ? `"${regex.substring(1)}"` : null;
   }
 
   updateFromEditorSaved(message) {
