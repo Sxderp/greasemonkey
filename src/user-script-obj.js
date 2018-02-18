@@ -53,6 +53,16 @@ function hasTld(items) {
 }
 
 
+function hasAboutBlank(items) {
+  for (let pattern of items) {
+    if (aboutBlankRegexp.test(pattern)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
 function _testClude(glob, url) {
   // Do not run in about:blank unless _specifically_ requested. See #1298
   if (aboutBlankRegexp.test(url.href) && !aboutBlankRegexp.test(glob)) {
@@ -293,7 +303,8 @@ window.EditableUserScript = class EditableUserScript
     let regDetails = {
       'js': [{'code': this.evalContent}],
       'runAt': 'document_' + this.runAt,
-      'allFrames': ! this.noFrames
+      'allFrames': ! this.noFrames,
+      'matchAboutBlank': this._matchAboutBlank
     };
 
     if (this._requireRegex) {
@@ -411,7 +422,8 @@ window.EditableUserScript = class EditableUserScript
   // Determine if run checking needs to be done in the script header.
   // Conditions which require a run check in the header include:
   //   Having both `@match` and `@include`
-  //   Using regex in `@include` or `@exclude`
+  //   Using regex or .tld in `@include` or `@exclude`
+  //   Matching on about:blank in `@include`
   checkForRegex() {
     // Reset expressions
     this._matchExpression = null;
@@ -427,7 +439,11 @@ window.EditableUserScript = class EditableUserScript
     // Having both `@match` and `@include` or using regex in `@include` only
     // matters if the special <all_urls> token is not present.
     if (this.matches.indexOf('<all_urls>') === -1) {
-      if (hasRegexString(this.includes) || hasTld(this.includes)) {
+      if (
+          hasRegexString(this.includes) ||
+          hasTld(this.includes) ||
+          hasAboutBlank(this.includes)
+        ) {
         this._requireRegex = true;
       } else if (this.matches.length > 0 && this.includes.length > 0) {
         this._requireRegex = true;
