@@ -400,23 +400,18 @@ window.EditableUserScript = class EditableUserScript
 
     // Do not run in about:blank unless _specifically_ requested. See #1298
     return `
-      if (/^about:blank/.test(location.href)) {
-        if (!${this._matchAboutBlank}) {
-          return;
-        }
-      } else {
-        // Perform other matching
-        const matchRegExp = ${this._matchExpression} ?
-          new RegExp(${this._matchExpression}, "i") : false;
-        if (matchRegExp && !matchRegExp.test(location.href)) {
-          return;
-        }
-        const excludeRegExp = ${this._excludeExpression} ?
-            new RegExp(${this._excludeExpression}, "i") : false;
-        if (excludeRegExp && excludeRegExp.test(location.href)) {
-          return;
-        }
-      }`
+      // Perform other matching
+      const matchRegExp = ${this._matchExpression} ?
+        new RegExp(${this._matchExpression}, "i") : false;
+      if (matchRegExp && !matchRegExp.test(location.href)) {
+        return;
+      }
+      const excludeRegExp = ${this._excludeExpression} ?
+          new RegExp(${this._excludeExpression}, "i") : false;
+      if (excludeRegExp && excludeRegExp.test(location.href)) {
+        return;
+      }
+    `
   }
 
   // Determine if run checking needs to be done in the script header.
