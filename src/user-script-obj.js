@@ -466,7 +466,7 @@ window.EditableUserScript = class EditableUserScript
     let regex = "";
 
     for (let glob of this._excludes) {
-      regex += "|(" + GM_convert2RegExp(glob) + ")";
+      regex += "|(" + GM_convert2RegExp(glob).source + ")";
     }
 
     this._excludeExpression = regex ? `"${regex.substring(1)}"` : null;
