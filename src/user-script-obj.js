@@ -35,7 +35,9 @@ const SCRIPT_ENV_EXTRA = `
 
 function hasRegexString(items) {
   for (let pattern of items) {
-    return '/' == pattern.substr(0, 1) &&  '/' == pattern.substr(-1, 1);
+    if ('/' == pattern.substr(0, 1) &&  '/' == pattern.substr(-1, 1)) {
+      return true;
+    }
   }
   return false;
 }
