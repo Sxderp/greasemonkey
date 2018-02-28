@@ -13,6 +13,7 @@ const valueStoreName = 'values';
 
 function scriptStoreDb(uuid) {
   function openDb() {
+    console.time('open');
     const dbVersion = 1;
     return new Promise((resolve, reject) => {
       let dbOpen = indexedDB.open('user-script-' + uuid, dbVersion);
@@ -21,6 +22,7 @@ function scriptStoreDb(uuid) {
         reject(event);
       };
       dbOpen.onsuccess = event => {
+        console.timeEnd('open');
         resolve(event.target.result);
       };
       dbOpen.onupgradeneeded = event => {
