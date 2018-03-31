@@ -16,16 +16,18 @@ module.exports = function(config) {
       './src/util/rivets-formatters.js',
     ],
     frameworks: ['chai', 'mocha', 'sinon', 'sinon-chrome'],
-    preprocessors: config.coverage
-        ? {'src/**/*.js': ['coverage']}
-        : {},
-    reporters: process.env.KARMA_REPORTER
-        ? [process.env.KARMA_REPORTER]
-        : ['coverage', 'progress'],
+    reporters: ['mocha'],
     port: 7328,
     colors: true,
     logLevel: config.LOG_WARN,
     autoWatch: true,
+
+    client: {
+      captureConsole: true,
+      mocha: {
+        bail: true
+      },
+    },
 
     browsers: ['FirefoxHeadless'],
     // https://github.com/karma-runner/karma-firefox-launcher/issues/76
