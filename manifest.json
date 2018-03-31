@@ -32,6 +32,7 @@
       "src/bg/api-provider-source.js",
       "src/bg/execute.js",
       "src/bg/export-db.js",
+      "src/bg/idb.js",
       "src/bg/is-enabled.js",
       "src/bg/on-message.js",
       "src/bg/on-user-script-notification.js",

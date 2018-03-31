@@ -11,12 +11,14 @@ describe('bg/value-store', () => {
     let testKey = 'gmFoo';
     let testValue = 'gmValue';
 
+    console.time('test1');
     return ValueStore.setValue(storeName, testKey, testValue)
         .then(isSet => {
           assert.equal(isSet, true, 'Failed to set value');
           return ValueStore.getValue(storeName, testKey);
         }).then(value => {
           assert.equal(value, testValue, 'Failed to get value');
+          console.timeEnd('test1');
         });
   });
 
@@ -24,6 +26,7 @@ describe('bg/value-store', () => {
     let testKey = 'gmBar';
     let testValue = 'gmValue';
 
+    console.time('test2');
     return ValueStore.setValue(storeName, testKey, testValue)
         .then(isSet => {
           assert.equal(isSet, true, 'Failed to set value');
@@ -33,8 +36,9 @@ describe('bg/value-store', () => {
           return ValueStore.getValue(storeName, testKey);
         }).then(value => {
           assert.isUndefined(value, 'Value has a result, was not deleted');
+          console.timeEnd('test2');
         });
-  }).timeout(5000);
+  });
 
   it('can list all keys', () => {
     let testKeys = ['gmBaz1', 'gmBaz2', 'gmBaz3'];
@@ -45,6 +49,7 @@ describe('bg/value-store', () => {
       ValueStore.setValue(storeName, testKeys[2], testValue),
     ];
 
+    console.time('test3');
     return Promise.all(setPromises)
         .then(isSets => {
           expect(isSets, 'Failed to set values')
@@ -53,6 +58,7 @@ describe('bg/value-store', () => {
         }).then(storeKeys => {
           expect(storeKeys, 'Listed keys do not match provided keys')
               .to.have.members(testKeys);
+          console.timeEnd('test3');
         });
   });
 });

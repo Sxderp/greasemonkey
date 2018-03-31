@@ -10,51 +10,31 @@ result to the sender.
 (function() {
 
 const valueStoreName = 'values';
+const valueStoreVersion = 1;
 
 
 function scriptStoreDb(uuid) {
-  function openDb() {
-    const dbVersion = 1;
-    return new Promise((resolve, reject) => {
-      let dbOpen = indexedDB.open('user-script-' + uuid, dbVersion);
-      dbOpen.onerror = event => {
-        console.error('Error opening script store DB!', uuid, event);
-        reject(event);
-      };
-      dbOpen.onsuccess = event => {
-        resolve(event.target.result);
-      };
-      dbOpen.onupgradeneeded = event => {
-        let db = event.target.result;
-        db.onerror = event => {
-          console.error('Error upgrading script store DB!', uuid, event);
-          reject(event);
-        };
-        let store = db.createObjectStore(valueStoreName, {'keypath': 'key'});
-      };
-    });
+  function onUpgrade(reject, event) {
+    let db = event.target.result;
+    try {
+      db.createObjectStore(valueStoreName);
+    } catch (err) {
+      reject(err);
+    }
   }
-
-  // Android does not support persist. Conditionally set it.
-  if (navigator.storage && navigator.storage.persist) {
-    return navigator.storage.persist().then(openDb);
-  } else {
-    return openDb();
-  }
+  let options = {
+    'onupgrade': onUpgrade,
+    'timeout': 2000
+  };
+  let dbName = 'user-script-' + uuid;
+  return idb.open(dbName, valueStoreVersion, options);
 }
 
 //////////////////////////// Store Implementation \\\\\\\\\\\\\\\\\\\\\\\\\\\\\
 
 function deleteStore(uuid) {
-  return new Promise((resolve, reject) => {
-    let deleteReq = indexedDB.deleteDatabase('user-script-' + uuid);
-    deleteReq.onsuccess = event => {
-      resolve(null);
-    };
-    deleteReq.onerror = event => {
-      reject(event);
-    };
-  });
+  let dbName = 'user-script-' + uuid;
+  return idb.remove(dbName, valueStoreVersion);
 }
 
 
@@ -63,7 +43,6 @@ async function deleteValue(uuid, key) {
   let txn = scriptDb.transaction([valueStoreName], 'readwrite');
   let store = txn.objectStore(valueStoreName);
   let req = store.delete(key);
-  scriptDb.close();
 
   return new Promise((resolve, reject) => {
     req.onsuccess = event => {
@@ -84,7 +63,6 @@ async function getValue(uuid, key) {
   let txn = scriptDb.transaction([valueStoreName], 'readonly');
   let store = txn.objectStore(valueStoreName);
   let req = store.get(key);
-  scriptDb.close();
 
   return new Promise((resolve, reject) => {
     req.onsuccess = event => {
@@ -109,7 +87,6 @@ async function listValues(uuid) {
   let txn = scriptDb.transaction([valueStoreName], 'readonly');
   let store = txn.objectStore(valueStoreName);
   let req = store.getAllKeys();
-  scriptDb.close();
 
   return new Promise((resolve, reject) => {
     req.onsuccess = event => {
@@ -130,7 +107,6 @@ async function setValue(uuid, key, value) {
   let txn = scriptDb.transaction([valueStoreName], 'readwrite');
   let store = txn.objectStore(valueStoreName);
   let req = store.put({'value': value}, key);
-  scriptDb.close();
 
   return new Promise((resolve, reject) => {
     req.onsuccess = event => {
