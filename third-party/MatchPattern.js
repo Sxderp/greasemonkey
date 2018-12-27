@@ -40,9 +40,10 @@
 
 (function() {
 
-const validProtocols = ['http:', 'https:', 'ftp:', 'file:'];
-const REG_HOST = /^(?:\*\.)?[^*\/]+$|^\*$|^$/;
-const REG_PARTS = new RegExp('^([a-z*]+:|\\*:)//([^/]+)?(/.*)$');
+var validProtocols = ['http:', 'https:', 'ftp:', 'file:'];
+var REG_HOST = /^(?:\*\.)?[^*\/]+$|^\*$|^$/;
+var REG_PARTS = new RegExp('^([a-z*]+:|\\*:)//([^/]+)?(/.*)$');
+
 
 // For the format of "pattern", see:
 //   http://code.google.com/chrome/extensions/match_patterns.html
@@ -58,52 +59,77 @@ function MatchPattern(pattern) {
     this._all = false;
   }
 
-  let m = pattern.match(REG_PARTS);
+  var m = pattern.match(REG_PARTS);
   if (!m) {
-    throw new Error("@match: Could not parse the pattern: " + pattern);
+    throw new Error("@match: Could not parse the pattern.");
   }
-  const protocol = m[1];
-  this._protocol = protocol;
-  let host = m[2];
-  const path = m[3];
+  this.protocol = m[1];
+  this.host = m[2];
+  this.path = m[3];
 
-  if (protocol != "*:" && validProtocols.indexOf(protocol) == -1) {
-    throw new Error(`@match: Invalid protocol (${protocol}) specified.`);
+  if (this.protocol != "*:" && validProtocols.indexOf(this.protocol) == -1) {
+    throw new Error(`@match: Invalid protocol (${this.protocol}) specified.`);
   }
 
-  if (!host && protocol != "file:") {
-    throw new Error(`@match: No host specified for (${protocol}).`)
-  } else if (host && protocol == "file:") {
+  if (!this.host && this.protocol != "file:") {
+    throw new Error(`@match: No host specified for (${this.protocol}).`)
+  } else if (this.host && this.protocol == "file:") {
     throw new Error("@match: Invalid (file:) URI, missing prefix \"/\"?");
   }
 
-  if (!REG_HOST.test(host)) {
+  if (!REG_HOST.test(this.host)) {
     throw new Error("@match: Invalid host specified.");
   }
 
-  if (path[0] !== "/") {
+  if (this.path[0] !== "/") {
     throw new Error("@match: Invalid path specified.");
   }
 
-  if (host) {
-    // We have to manually create the hostname regexp (instead of using
-    // GM_convert2RegExp) to properly handle *.example.tld, which should match
-    // example.tld and any of its subdomains, but not anotherexample.tld.
-    this._hostExpr = new RegExp("^" +
-        // Two characters in the host portion need special treatment:
-        //   - "." should not be treated as a wildcard, so we escape it to \.
-        //   - if the hostname only consists of "*" (i.e. full wildcard),
-        //     replace it with .*
-        host.replace(/\./g, "\\.").replace(/^\*$/, ".*")
-        // Then, handle the special case of "*." (any or no subdomain) for match
-        // patterns. "*." has been escaped to "*\." by the replace above.
-            .replace("*\\.", "(.*\\.)?") + "$", "i");
-  } else {
-    // If omitted, then it means "", used for file: protocol only
-    this._hostExpr = /^$/;
-  }
-  this._pathExpr = GM_convert2RegExp(path, false, true);
+  this.expression = new RegExp(this.createExpression(), "i");
 }
+
+
+MatchPattern.prototype.createExpression = function() {
+  let regex = '^';
+
+  if ('*:' == this.protocol) {
+    regex += 'https?:';
+  } else {
+    regex += this.protocol;
+  }
+
+  regex += '//';
+
+  // No host indicates this is a file: match
+  if (this.host) {
+    let host = this.host;
+
+    if ('*' == host) {
+      // Wildcard host name. Match on any character until the path separator
+      // is found.
+      regex += '[^/]+?';
+    } else {
+      if (host.match(/^\*\./)) {
+        // Special cased any or no subdomain token. Add a non-greed match for
+        // zero or more of ".*\."
+        regex += '(.*\\.)*?';
+        // Trim the special case token from the host name.
+        host = host.substring(2);
+      }
+      // Treat the rest of the hostname as standard characters that need
+      // escaping.
+      regex += escapeRegExpCharacters(host);
+      // Append a zero or one match for a port string
+      regex += '(:\\d+)?';
+    }
+  }
+  // File protocol does not have a host
+
+  // Treat the path as standard characters that need escaping.
+  regex += escapeRegExpCharacters(this.path);
+
+  return regex + '$';
+};
 
 
 MatchPattern.prototype.__defineGetter__('pattern',
@@ -111,14 +137,46 @@ function MatchPattern_getPattern() { return '' + this._pattern; });
 
 
 MatchPattern.prototype.doMatch = function(url) {
-  if (validProtocols.indexOf(url.protocol) == -1) return false;
   if (this._all) return true;
-  if (this._protocol != '*:' && this._protocol != url.protocol) return false;
-
-  const path = url.pathname + url.search;
-  return this._hostExpr.test(url.hostname) && this._pathExpr.test(path);
+  return this.expression.test(url.href);
 };
 
+
+function escapeRegExpCharacters(pattern) {
+  let res = "";
+
+  for (let i = 0; i < pattern.length; ++i) {
+    switch(pattern[i]) {
+      case '*':
+        res += '.*?';
+        break;
+
+      case '.':
+      case '?':
+      case '^':
+      case '$':
+      case '+':
+      case '{':
+      case '}':
+      case '[':
+      case ']':
+      case '|':
+      case '(':
+      case ')':
+      case '\\':
+        res += '\\' + pattern[i];
+        break;
+
+      case ' ':
+        break;
+
+      default:
+        res += pattern[i];
+        break;
+    }
+  }
+  return res;
+}
 
 window.MatchPattern = MatchPattern;
 })();
