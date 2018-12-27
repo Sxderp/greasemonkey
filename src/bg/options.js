@@ -49,6 +49,7 @@ function setGlobalEnabled(enabled) {
   }, logUnhandledError);
   setIcon();
   chrome.storage.local.set({'globalEnabled': enabled});
+  UserScriptRegistry.registerUserScripts();
 }
 window.setGlobalEnabled = setGlobalEnabled;
 function onEnabledSet(message, sender, sendResponse) {

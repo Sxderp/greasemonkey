@@ -30,7 +30,6 @@
       "/src/i18n.js",
 
       "/src/bg/api-provider-source.js",
-      "/src/bg/execute.js",
       "/src/bg/export-db.js",
       "/src/bg/on-message.js",
       "/src/bg/on-user-script-notification.js",
@@ -55,11 +54,14 @@
       "/third-party/compare-versions/index.js",
       "/third-party/jszip/jszip.min.js",
 
-      "/src/bg/execute.run.js",
       "/src/bg/user-script-detect.run.js",
       "/src/bg/user-script-registry.run.js",
       "/src/bg/welcome.run.js"
     ]
+  },
+
+  "user_scripts": {
+    "api_script": "src/content/user-script-api.js"
   },
 
   "permissions": [

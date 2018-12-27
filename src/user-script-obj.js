@@ -10,7 +10,7 @@ reference any other objects from this file.
 // Increment this number when updating `calculateEvalContent()`.  If it
 // is higher than it was when eval content was last calculated, it will
 // be re-calculated.
-const EVAL_CONTENT_VERSION = 14;
+const EVAL_CONTENT_VERSION = 15;
 
 
 // Private implementation.
@@ -19,19 +19,25 @@ const EVAL_CONTENT_VERSION = 14;
 const extensionVersion = chrome.runtime.getManifest().version;
 const aboutBlankRegexp = /^about:blank/;
 
-const SCRIPT_ENV_EXTRA = `
-{
-  let origOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function open(method, url) {
-    // only include method and url parameters so the function length is set properly
-    if (arguments.length >= 2) {
-      let newUrl = new URL(arguments[1], document.location.href);
-      arguments[1] = newUrl.toString();
+
+function _hasRegexString(items) {
+  for (let pattern of items) {
+    if ('/' == pattern.substr(0, 1) &&  '/' == pattern.substr(-1, 1)) {
+      return true;
     }
-    return origOpen.apply(this, arguments);
-  };
+  }
+  return false;
 }
-`;
+
+
+function _hasTld(items) {
+  for (let pattern of items) {
+    if (/^([^:]+:\/\/[^\/]+)\.tld(\/.*)?$/.test(pattern)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 
 function _testExp(expression, url) {
@@ -100,12 +106,12 @@ window.RemoteUserScript = class RemoteUserScript {
     this._includesExpression = null;
     this._matches = [];
     this._matchesExpression = null;
-    this._matchAboutBlank = false;
     this._name = 'user-script';
     this._namespace = null;
     this._noFrames = false;
     this._runAt = 'end';
     this._version = null;
+    this._runCheckDetails = null;
 
     _loadValuesInto(this, vals, userScriptKeys);
   }
@@ -134,14 +140,19 @@ window.RemoteUserScript = class RemoteUserScript {
 
   get id() { return this.namespace + '/' + this.name; }
 
+  get runCheckDetails() {
+    if (this._runCheckDetails !== null) return this._runCheckDetails;
+    this._refreshExpressions();
+    return this.runCheckDetails;
+  }
+
   _generateCludes(cludes, checkBlank) {
-    if (checkBlank) this._matchAboutBlank = false;
     if (cludes.length === 0) return false;
     let regex = "";
 
     for (let glob of cludes) {
       if (checkBlank && aboutBlankRegexp.test(glob)) {
-        this._matchAboutBlank = true;
+        this._runCheckDetails.aboutBlank = true;
         continue;
       }
       regex += "|(" + GM_convert2RegExp(glob).source + ")";
@@ -152,6 +163,11 @@ window.RemoteUserScript = class RemoteUserScript {
   _generateMatches(matches) {
     if (matches.length === 0) return false;
     let regex = "";
+
+    if (matches.indexOf('<all_urls>') !== -1) {
+        this._runCheckDetails.allUrls = true;
+        return "(.*)"
+    }
 
     for (let pattern of matches) {
       if ('string' === typeof pattern) {
@@ -165,9 +181,32 @@ window.RemoteUserScript = class RemoteUserScript {
   }
 
   _actuallyRefreshExp(excludes, includes, matches) {
+    // Keep track of some required bits of information
+    this._runCheckDetails = {
+        'aboutBlank': false,
+        'allUrls': false,
+        'regexChecks': false,
+        'excludes': excludes,
+        'includes': includes,
+        'matches': matches
+    };
     this._excludesExpression = this._generateCludes(excludes, false);
     this._includesExpression = this._generateCludes(includes, true);
     this._matchesExpression = this._generateMatches(matches);
+
+    // We try to rely on native WebExtension matching as much as possible.
+    // In order to preserve backwards compatibility manual matching is required
+    // under specific circumstances. Check for them here.
+    //
+    if (_hasRegexString(excludes) || _hasTld(excludes)) {
+        this._runCheckDetails.regexChecks = true;
+    } else if (matches.indexOf('<all_urls>') === -1) {
+        if (_hasRegexString(includes) || _hasTld(includes)) {
+            this._runCheckDetails.regexChecks = true;
+        } else if (matches.length > 0 && includes.length > 0) {
+            this._runCheckDetails.regexChecks = true;
+        }
+    }
   }
 
   _refreshExpressions() {
@@ -314,6 +353,7 @@ window.EditableUserScript = class EditableUserScript
     this._editTime = null;
     this._installTime = null;
     this._requiresContent = {};  // Map of download URL to content.
+    this._registration = null;
 
     _loadValuesInto(this, details, editableUserScriptKeys);
   }
@@ -346,46 +386,94 @@ window.EditableUserScript = class EditableUserScript
         = `try { (function scopeWrapper(){ function userScript() { ${this._content}
         /* Line break to catch comments on the final line of scripts. */ }
         const unsafeWindow = window.wrappedJSObject;
-        ${this.calculateGmInfo()}
-        ${apiProviderSource(this)}
-        ${Object.values(this._requiresContent).join('\n\n')}
-        ${SCRIPT_ENV_EXTRA}
         userScript();
         })();
-        } catch (e) { console.error("Script error: ", e); }
-        //# sourceURL=user-script:${escape(this.id)}`;
+        } catch (e) { console.error("Script error: ", e); }`;
     this._evalContentVersion = EVAL_CONTENT_VERSION;
   }
 
-  calculateGmInfo() {
-    let gmInfo = {
-      'script': {
-        'description': this.description,
-        'excludes': this.excludes,
-        'includes': this.includes,
-        'matches': this.matches,
-        'name': this.name,
-        'namespace': this.namespace,
-        'resources': {},
-        'runAt': this.runAt,
-        'uuid': this.uuid,
-        'version': this.version,
+  registrationMetaObj() {
+    let metaobj = {
+      'internal': {
+        'uuid': this._uuid,
+        'grants': this._grants,
+        'requires': this._requiresContent,
+        'regexChecks': this.runCheckDetails.regexChecks
       },
-      'scriptMetaStr': extractMeta(this.content),
-      'scriptHandler': 'Greasemonkey',
-      'version': extensionVersion,
+      'external': {
+        'script': {
+          'description': this.description,
+          'grants': this.grants,
+          'excludes': this.excludes,
+          'includes': this.includes,
+          'matches': this.matches,
+          'name': this.name,
+          'namespace': this.namespace,
+          'resources': {},
+          'runAt': this.runAt,
+          'uuid': this.uuid,
+          'version': this.version,
+        },
+        'scriptMetaStr': extractMeta(this.content),
+        'scriptHandler': 'Greasemonkey',
+        'version': extensionVersion,
+      }
     };
+    if (this.runCheckDetails.regexChecks) {
+      metaobj.internal.checks = {
+        'excludes': this._excludesExpression,
+        'includes': this._includesExpression,
+        'matches': this._matchesExpression
+      };
+    }
     Object.keys(this.resources).forEach(n => {
       let r = this.resources[n];
-      gmInfo.script.resources[n] = {
+      metaobj.external.script.resources[n] = {
         'name': r.name,
         'mimetype': r.mimetype,
         'url': r.url || "",
       };
     });
-    return 'const GM = {};\n'
-        + 'GM.info=' + JSON.stringify(gmInfo) + ';'
-        + 'const GM_info = GM.info;';
+    return metaobj;
+  }
+
+  get regDetails() {
+    let regDetails = {
+      'runAt': 'document_' + this._runAt,
+      'js': [{'code': this._evalContent}],
+      'allFrames': ! this._noFrames,
+      'matchAboutBlank': this.runCheckDetails.aboutBlank,
+      'scriptMetadata': this.registrationMetaObj()
+    };
+
+    if (this.runCheckDetails.regexChecks) {
+        regDetails['matches'] = ['<all_urls>'];
+        return regDetails;
+    } else if (this.runCheckDetails.allUrls) {
+        regDetails['matches'] = ['<all_urls>'];
+    } else if (this.runCheckDetails.matches.length === 0) {
+        regDetails['matches'] = ['<all_urls>'];
+        regDetails['includeGlobs'] = this.runCheckDetails.includes;
+    } else {
+        regDetails['matches'] = this.runCheckDetails.matches;
+    }
+
+    if (this.runCheckDetails.excludes.length > 0) {
+        regDetails['excludeGlobs'] = this.runCheckDetails.excludes;
+    }
+
+    return regDetails;
+  }
+
+  async register() {
+    this._registration = await browser.userScripts.register(this.regDetails);
+  }
+
+  async unregister() {
+    if (this._registration) {
+      await this._registration.unregister();
+      this._registration = null;
+    }
   }
 
   // Given a successful `Downloader` object, update this script from it.

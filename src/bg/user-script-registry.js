@@ -135,8 +135,8 @@ async function loadUserScripts() {
     return Promise.all(savePromises);
   }).then(saveDetails => {
     userScripts = {};
-    saveDetails.forEach(details => {
-      userScripts[details.uuid] = new EditableUserScript(details);
+    return saveDetails.map(details => {
+      return setUserScript(new EditableUserScript(details));
     });
   }).catch(err => {
     console.error('Failed to load user scripts', err);
@@ -267,21 +267,32 @@ async function onUserScriptUninstall(message, sender, sendResponse) {
 
   // TODO: Delete per-script values from local storage!
 
-  return new Promise((resolve, reject) => {
+  let removePromise = new Promise((resolve, reject) => {
     req.onsuccess = () => {
-      delete userScripts[message.uuid];
       resolve();
     };
     req.onerror = event => {
       console.error('onUserScriptUninstall() failure', event);
       reject(req.error);
     };
-  }).then(() => {
-    // TODO: The store may be orphaned if this fails
-    return ValueStore.deleteStore(message.uuid);
+  })
+  let deletePromise = ValueStore.deleteStore(message.uuid);
+
+  return Promise.all([removePromise, deletePromise]).then(async () => {
+    if (userScripts[message.uuid]) {
+      await userScripts[message.uuid].unregister();
+    }
+    delete userScripts[message.uuid];
   });
 }
 window.onUserScriptUninstall = onUserScriptUninstall;
+
+
+function registerUserScripts() {
+  let loadingScripts =
+      Object.keys(userScripts).map(uuid => setUserScript(userScripts[uuid]));
+  return Promise.all(loadingScripts);
+}
 
 
 async function saveUserScript(userScript) {
@@ -332,16 +343,27 @@ async function saveUserScript(userScript) {
 
   return new Promise((resolve, reject) => {
     req.onsuccess = () => {
-      // In case this was for an install, now that the user script is saved
-      // to the object store, also put it in the in-memory copy.
-      userScripts[userScript.uuid] = userScript;
-      // Create a new details object since the original was modified for saving
-      let resDetails = userScript.details;
-      resDetails.id = userScript.id;
-      resolve(resDetails);
+      resolve(userScript);
     };
     req.onerror = () => reject(req.error);
-  }).catch(onSaveError);
+  }).catch(onSaveError).then(setUserScript).then(() => {
+    let resDetails = userScript.details;
+    resDetails.id = userScript.id;
+    return resDetails;
+  });
+}
+
+
+async function setUserScript(userScript) {
+  let uuid = userScript.uuid;
+  // Unregister any existing scripts
+  if (userScripts[uuid]) {
+    await userScripts[uuid].unregister();
+  }
+  userScripts[uuid] = userScript;
+  if (userScript.enabled && getGlobalEnabled()) {
+    await userScript.register();
+  }
 }
 
 
@@ -378,6 +400,7 @@ window.UserScriptRegistry = {
   '_loadUserScripts': loadUserScripts,
   '_saveUserScript': saveUserScript,
   'installFromDownloader': installFromDownloader,
+  'registerUserScripts': registerUserScripts,
   'scriptByUuid': scriptByUuid,
   'scriptsToRunAt': scriptsToRunAt,
 };
