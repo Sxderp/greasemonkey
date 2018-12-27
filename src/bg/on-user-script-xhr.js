@@ -17,7 +17,6 @@ function onUserScriptXhr(port) {
 
   let xhr = new XMLHttpRequest();
   port.onMessage.addListener((msg, src) => {
-    checkApiCallAllowed('GM.xmlHttpRequest', msg.uuid);
     switch (msg.name) {
       case 'open':
         open(xhr, msg.details, port, src.sender.tab.url);

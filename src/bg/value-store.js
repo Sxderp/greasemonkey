@@ -164,7 +164,6 @@ function onApiDeleteValue(message, sender, sendResponse) {
     console.warn('ApiDeleteValue handler got no key.');
     return;
   }
-  checkApiCallAllowed('GM.deleteValue', message.uuid);
 
   // Return a promise
   return deleteValue(message.uuid, message.key);
@@ -180,7 +179,6 @@ function onApiGetValue(message, sender, sendResponse) {
     console.warn('ApiGetValue handler got no key.');
     return;
   }
-  checkApiCallAllowed('GM.getValue', message.uuid);
 
   // Return a promise
   return getValue(message.uuid, message.key);
@@ -193,7 +191,6 @@ function onApiListValues(message, sender, sendResponse) {
     console.warn('ApiListValues handler got no UUID.');
     return;
   }
-  checkApiCallAllowed('GM.listValues', message.uuid);
 
   // Return a promise
   return listValues(message.uuid);
@@ -209,7 +206,6 @@ function onApiSetValue(message, sender, sendResponse) {
     console.warn('ApiSetValue handler got no key.');
     return;
   }
-  checkApiCallAllowed('GM.setValue', message.uuid);
 
   // Return a promise
   return setValue(message.uuid, message.key, message.value);

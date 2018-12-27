@@ -196,7 +196,6 @@ function onApiGetResourceBlob(message, sender, sendResponse) {
     sendResponse(false);
     return;
   }
-  checkApiCallAllowed('GM.getResourceUrl', message.uuid);
 
   let userScript = userScripts[message.uuid];
   let resource = userScript.resources[message.resourceName];
