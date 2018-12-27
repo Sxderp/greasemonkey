@@ -15,7 +15,7 @@ function doCheck(checks, url) {
 
 function _testExp(expression, url) {
   let exp = new RegExp(expression, "i");
-  return exp.test(url.href);
+  return exp.test(url);
 }
 
 
