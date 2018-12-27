@@ -30,7 +30,7 @@ browser.userScripts.onBeforeScript.addListener(script => {
       'info': script.metadata.external
     },
     exportFunction(fn, target, options) {
-      return exportFunction(fn, global, options);
+      return exportFunction(fn, target, options);
     },
     cloneInto(obj, target) {
       return cloneInto(obj, target);
