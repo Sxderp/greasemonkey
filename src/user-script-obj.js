@@ -144,45 +144,6 @@ window.RemoteUserScript = class RemoteUserScript {
 
   get id() { return this.namespace + '/' + this.name; }
 
-  runsOn(url) {
-    if (!(url instanceof URL)) {
-      throw new Error('runsOn() got non-url parameter: ' + url);
-    }
-
-    if (url
-        && url.protocol != 'http:'
-        && url.protocol != 'https:'
-        && url.protocol != 'file:'
-        && !url.href.startsWith('about:blank')
-    ) {
-      return false;
-    }
-
-    // TODO: Profile cost of pattern generation, cache if justified.
-    // TODO: User includes/excludes/matches.
-
-    for (let glob of getGlobalExcludes()) {
-      if (_testClude(glob, url)) return false;
-    }
-
-    return this._testCludes(url);
-  }
-
-  _testCludes(url) {
-    for (let glob of this._excludes) {
-      if (_testClude(glob, url)) return false;
-    }
-
-    for (let glob of this._includes) {
-      if (_testClude(glob, url)) return true;
-    }
-    for (let pattern of this._matches) {
-      if (_testMatch(pattern, url)) return true;
-    }
-
-    return false;
-  }
-
   toString() {
     return this.version
         ? _('gm_script_id_ver', this.id, this.version)
@@ -221,6 +182,30 @@ window.RunnableUserScript = class RunnableUserScript
     _loadValuesInto(this, details, runnableUserScriptKeys);
 
     if (!this._uuid) this._uuid = _randomUuid();
+  }
+
+  runsOn(url) {
+    if (!(url instanceof URL)) {
+      throw new Error('runsOn() got non-url parameter: ' + url);
+    }
+
+    if (url
+        && url.protocol != 'http:'
+        && url.protocol != 'https:'
+        && url.protocol != 'file:'
+        && !url.href.startsWith('about:blank')
+    ) {
+      return false;
+    }
+
+    // TODO: Profile cost of pattern generation, cache if justified.
+    // TODO: User includes/excludes/matches.
+
+    for (let glob of getGlobalExcludes()) {
+      if (_testClude(glob, url)) return false;
+    }
+
+    return this._testCludes(url);
   }
 
   _testCludes(url) {
