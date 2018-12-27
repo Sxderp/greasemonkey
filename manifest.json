@@ -29,7 +29,6 @@
     "scripts": [
       "/src/i18n.js",
 
-      "/src/bg/api-provider-source.js",
       "/src/bg/export-db.js",
       "/src/bg/on-message.js",
       "/src/bg/on-user-script-notification.js",
