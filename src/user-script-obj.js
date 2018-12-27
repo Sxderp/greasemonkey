@@ -10,7 +10,7 @@ reference any other objects from this file.
 // Increment this number when updating `calculateEvalContent()`.  If it
 // is higher than it was when eval content was last calculated, it will
 // be re-calculated.
-const EVAL_CONTENT_VERSION = 13;
+const EVAL_CONTENT_VERSION = 14;
 
 
 // Private implementation.
@@ -34,23 +34,9 @@ const SCRIPT_ENV_EXTRA = `
 `;
 
 
-function _testClude(glob, url) {
-  // Do not run in about:blank unless _specifically_ requested. See #1298
-  if (aboutBlankRegexp.test(url.href) && !aboutBlankRegexp.test(glob)) {
-    return false;
-  }
-
-  return GM_convert2RegExp(glob, url).test(url.href);
-}
-
-
-function _testMatch(matchPattern, url) {
-  if ('string' == typeof matchPattern) {
-    matchPattern = new MatchPattern(matchPattern);
-  } else if (!(matchPattern instanceof MatchPattern)) {
-    return false;
-  }
-  return matchPattern.doMatch(url);
+function _testExp(expression, url) {
+  let exp = new RegExp(expression, "i");
+  return exp.test(url.href);
 }
 
 
@@ -107,10 +93,14 @@ window.RemoteUserScript = class RemoteUserScript {
     this._description = null;
     this._downloadUrl = null;
     this._excludes = [];
+    this._excludesExpression = null;
     this._grants = ['none'];
     this._homePageUrl = null;
     this._includes = [];
+    this._includesExpression = null;
     this._matches = [];
+    this._matchesExpression = null;
+    this._matchAboutBlank = false;
     this._name = 'user-script';
     this._namespace = null;
     this._noFrames = false;
@@ -144,6 +134,48 @@ window.RemoteUserScript = class RemoteUserScript {
 
   get id() { return this.namespace + '/' + this.name; }
 
+  _generateCludes(cludes, checkBlank) {
+    if (checkBlank) this._matchAboutBlank = false;
+    if (cludes.length === 0) return false;
+    let regex = "";
+
+    for (let glob of cludes) {
+      if (checkBlank && aboutBlankRegexp.test(glob)) {
+        this._matchAboutBlank = true;
+        continue;
+      }
+      regex += "|(" + GM_convert2RegExp(glob).source + ")";
+    }
+    return regex ? regex.substring(1) : false;
+  }
+
+  _generateMatches(matches) {
+    if (matches.length === 0) return false;
+    let regex = "";
+
+    for (let pattern of matches) {
+      if ('string' === typeof pattern) {
+        pattern = new MatchPattern(pattern);
+      } else if (! (pattern instanceof MatchPattern)) {
+        continue;
+      }
+      regex += "|(" + pattern.expression.source + ")";
+    }
+    return regex ? regex.substring(1) : false;
+  }
+
+  _actuallyRefreshExp(excludes, includes, matches) {
+    this._excludesExpression = this._generateCludes(excludes, false);
+    this._includesExpression = this._generateCludes(includes, true);
+    this._matchesExpression = this._generateMatches(matches);
+  }
+
+  _refreshExpressions() {
+    // TODO: Global includes / matches
+    let excludes = getGlobalExcludes().concat(this._excludes);
+    this._actuallyRefreshExp(excludes, this._includes, this._matches);
+  }
+
   runsOn(url) {
     if (!(url instanceof URL)) {
       throw new Error('runsOn() got non-url parameter: ' + url);
@@ -158,28 +190,26 @@ window.RemoteUserScript = class RemoteUserScript {
       return false;
     }
 
-    // TODO: Profile cost of pattern generation, cache if justified.
-    // TODO: User includes/excludes/matches.
-
-    for (let glob of getGlobalExcludes()) {
-      if (_testClude(glob, url)) return false;
+    if (
+        this._excludesExpression === null ||
+        this._matchesExpression === null ||
+        this._includesExpression === null
+    ) {
+        this._refreshExpressions();
     }
 
-    return this._testCludes(url);
-  }
-
-  _testCludes(url) {
-    for (let glob of this._excludes) {
-      if (_testClude(glob, url)) return false;
+    if (this._excludesExpression && _testExp(this._excludesExpression, url)) {
+      return false;
     }
-
-    for (let glob of this._includes) {
-      if (_testClude(glob, url)) return true;
+    if (this._matchAboutBlank && aboutBlankRegexp.test(url.href)) {
+      return true;
     }
-    for (let pattern of this._matches) {
-      if (_testMatch(pattern, url)) return true;
+    if (this._includesExpression && _testExp(this._includesExpression, url)) {
+      return true;
     }
-
+    if (this._matchesExpression && _testExp(this._matchesExpression, url)) {
+      return true;
+    }
     return false;
   }
 
@@ -223,26 +253,19 @@ window.RunnableUserScript = class RunnableUserScript
     if (!this._uuid) this._uuid = _randomUuid();
   }
 
-  _testCludes(url) {
-    let excludes = _safeCopy(this._userExcludes);
+  _refreshExpressions() {
+    // TODO: Global includes / matches
+
+    let excludes = getGlobalExcludes().concat(this._userExcludes);
     if (!this._userExcludesExclusive) excludes.push(...this._excludes);
-    for (let glob of excludes) {
-      if (_testClude(glob, url)) return false;
-    }
 
-    let includes = _safeCopy(this._userIncludes);
+    let includes = [].concat(this._userIncludes);
     if (!this._userIncludesExclusive) includes.push(...this._includes);
-    for (let glob of includes) {
-      if (_testClude(glob, url)) return true;
-    }
 
-    let matches = _safeCopy(this._userMatches);
+    let matches = [].concat(this._userMatches);
     if (!this._userMatchesExclusive) matches.push(...this._matches);
-    for (let pattern of matches) {
-      if (_testMatch(pattern, url)) return true;
-    }
 
-    return false;
+    this._actuallyRefreshExp(excludes, includes, matches);
   }
 
   get details() {
@@ -382,6 +405,8 @@ window.EditableUserScript = class EditableUserScript
 
     this._resources = {};
     Object.assign(this._resources, downloaderDetails.resources);
+
+    this._refreshExpressions();
   }
 }
 
