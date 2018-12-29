@@ -287,9 +287,10 @@ async function onUserScriptUninstall(message, sender, sendResponse) {
 window.onUserScriptUninstall = onUserScriptUninstall;
 
 
-function registerUserScripts() {
-  let loadingScripts =
-      Object.keys(userScripts).map(uuid => setUserScript(userScripts[uuid]));
+function registerUserScripts(refresh = false) {
+  let loadingScripts = Object.keys(userScripts).map(uuid => {
+    return setUserScript(userScripts[uuid], refresh);
+  });
   return Promise.all(loadingScripts);
 }
 
@@ -353,7 +354,7 @@ async function saveUserScript(userScript) {
 }
 
 
-async function setUserScript(userScript) {
+async function setUserScript(userScript, refresh = false) {
   let uuid = userScript.uuid;
   // Unregister any existing scripts
   if (userScripts[uuid]) {
@@ -361,7 +362,7 @@ async function setUserScript(userScript) {
   }
   userScripts[uuid] = userScript;
   if (userScript.enabled && getGlobalEnabled()) {
-    await userScript.register();
+    await userScript.register(refresh);
   }
 }
 

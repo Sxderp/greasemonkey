@@ -111,6 +111,7 @@ function onOptionsSave(message, sender, sendResponse) {
       {'globalExcludes': message.excludes},
       logUnhandledError);
   gGlobalExcludes = message.excludes.split('\n');
+  UserScriptRegistry.registerUserScripts(/* refresh */ true);
 }
 window.onOptionsSave = onOptionsSave;
 

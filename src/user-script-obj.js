@@ -465,7 +465,8 @@ window.EditableUserScript = class EditableUserScript
     return regDetails;
   }
 
-  async register() {
+  async register(refresh = false) {
+    if (refresh) this._refreshExpressions();
     this._registration = await browser.userScripts.register(this.regDetails);
   }
 
